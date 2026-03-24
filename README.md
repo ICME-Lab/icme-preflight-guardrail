@@ -77,7 +77,6 @@ That's the difference between "please don't do this" and "you mathematically can
 - **Docs:** [docs.icme.io](https://docs.icme.io)
 - **MCP Server (npm):** [icme-preflight-mcp](https://www.npmjs.com/package/icme-preflight-mcp)
 - **Paper:** [Succinctly Verifiable Agentic Guardrails (arxiv)](https://arxiv.org/abs/2602.17452)
-- **HN discussion:** [news.ycombinator.com/item?id=47496122](https://news.ycombinator.com/item?id=47496122)
 
 ## License
 
