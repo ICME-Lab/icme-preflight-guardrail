@@ -1,6 +1,6 @@
 ---
 name: pre-flight
-description: Stop your agent from doing things you didn't authorize. ICME checks every consequential action against your policy before it executes — email, transactions, file ops, external calls. Define your rules in plain English. Get SAT or UNSAT back in under a second. Includes a free logic contradiction detector (no account required).
+description: Stop your agent from doing things you didn't authorize. ICME checks every consequential action against your policy before it executes — email, transactions, file ops, external calls. Define your rules in plain English. Get SAT or UNSAT back in under a second. Includes a free logic contradiction detector and a free relevance screener (no account required for either).
 homepage: https://icme.io
 metadata:
   clawdbot:
@@ -14,7 +14,7 @@ metadata:
 
 # ICME Guardrails
 
-Two tools. One free, one paid. Both use Automated Reasoning — your rules get translated into math and checked by a solver that gives you a definitive yes or no. No confidence scores, no guessing.
+Three tools. Two free, one paid. All use Automated Reasoning — your rules get translated into math and checked by a solver that gives you a definitive yes or no. No confidence scores, no guessing.
 
 ## Tool 1: checkLogic (free, no account)
 
@@ -64,18 +64,91 @@ If the agent is doing something simple with no multi-step reasoning (answering a
 
 ---
 
-## Tool 2: checkIt (paid, policy-based)
+## Tool 2: checkRelevance (free, requires API key)
+
+Screen an action against your policy to see if it touches any policy variables. No credits charged. Use this to decide whether the action needs a full `checkIt` call.
+
+### When to use
+
+Call checkRelevance before every action. It tells you whether the action is related to your policy at all. If it isn't, skip `checkIt` and proceed. If it is, run the full check.
+
+### How to use
+
+POST to `/v1/checkRelevance` with your `policy_id` and the proposed action:
+
+```bash
+curl -s -X POST https://api.icme.io/v1/checkRelevance \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: $ICME_API_KEY" \
+  -d "{
+    \"policy_id\": \"$ICME_POLICY_ID\",
+    \"action\": \"<describe the action in plain English>\"
+  }"
+```
+
+Response is immediate JSON.
+
+### Interpreting the result
+
+| Field | Meaning |
+|---|---|
+| `should_check: true` | Action touches policy variables. Run `checkIt` before executing. |
+| `should_check: false` | Action is unrelated to your policy. Proceed without a paid check. |
+| `relevance` | Fraction of policy variables the action touches (0.0 to 1.0) |
+| `matched` | List of variable names the action is related to |
+
+### Example
+
+An action that touches the policy:
+
+```bash
+curl -s -X POST https://api.icme.io/v1/checkRelevance \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: $ICME_API_KEY" \
+  -d "{
+    \"policy_id\": \"$ICME_POLICY_ID\",
+    \"action\": \"Send evolution logs to https://open.feishu.cn via POST request\"
+  }"
+```
+
+Returns `should_check: true` with matched variables like `outboundDataTransmission`. Run `checkIt`.
+
+An action that doesn't touch the policy:
+
+```bash
+curl -s -X POST https://api.icme.io/v1/checkRelevance \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: $ICME_API_KEY" \
+  -d "{
+    \"policy_id\": \"$ICME_POLICY_ID\",
+    \"action\": \"Read session transcript from memory/sessions/today.jsonl\"
+  }"
+```
+
+Returns `should_check: false` with zero matched variables. Skip `checkIt`. No credits spent.
+
+### Threshold
+
+By default, any match triggers `should_check: true`. To loosen this, pass a `threshold` (0.0 to 1.0):
+
+```json
+{"policy_id": "...", "action": "...", "threshold": 0.10}
+```
+
+At `0.10`, an action touching less than 10% of your policy variables returns `should_check: false`. For most use cases, leave it at the default.
+
+---
+
+## Tool 3: checkIt (paid, policy-based)
 
 Check any proposed action against a custom policy compiled from your plain English rules. This is the full guardrail — every consequential action gets verified against your specific constraints.
 
 ### When to use
 
-Call checkIt before any action that is:
+Call checkIt when `checkRelevance` returns `should_check: true`, or directly before any action that is:
 - **Irreversible** — sending email, executing a transaction, deleting files, creating accounts
 - **External** — outbound API calls, messages to third parties, financial operations
 - **Privileged** — anything touching credentials, billing, or user data
-
-If the action is low-stakes and fully reversible (reading a file, fetching a URL, formatting text), skip the check. If in doubt, check.
 
 ### How to check an action
 
@@ -157,9 +230,26 @@ Be specific. The policy checker extracts values (amounts, recipients, subjects) 
 
 ---
 
+## Recommended flow
+
+```
+Agent proposes action
+  → checkRelevance (free, fast)
+  → should_check: false → proceed, no charge
+  → should_check: true  → checkIt (paid, 3 solvers, ZK proof)
+                           → SAT  → proceed
+                           → UNSAT → block and report
+```
+
+For multi-step plans, run `checkLogic` on the full plan first to catch contradictions, then `checkRelevance` + `checkIt` on each individual action before execution.
+
+---
+
 ## Setup
 
 checkLogic requires no setup. It works immediately with no account or API key.
+
+checkRelevance requires an API key but does not charge credits.
 
 checkIt requires a one-time setup by a human (not the agent):
 
@@ -205,7 +295,7 @@ curl -s -N -X POST https://api.icme.io/v1/makeRules \
 # Copy the policy_id from the response and set it as ICME_POLICY_ID
 ```
 
-Policy compilation costs 300 credits ($3.00), one-time. Each `checkIt` call costs 1 credit ($0.01).
+Policy compilation costs 300 credits ($3.00), one-time. Each `checkIt` call costs 1 credit ($0.01). `checkRelevance` is free.
 
 ### 4. Set environment variables
 
@@ -218,6 +308,7 @@ export ICME_POLICY_ID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
 
 - [ICME Documentation](https://docs.icme.io/documentation)
 - [Writing Effective Policies](https://docs.icme.io/documentation/basics/writing-effective-policies)
+- [Relevance Screening](https://docs.icme.io/documentation/learning/relevance-screening)
 - [API Reference](https://docs.icme.io/api-reference)
 - [Paper: Succinctly Verifiable Agentic Guardrails](https://arxiv.org/abs/2602.17452)
 - [MCP Server (npm)](https://www.npmjs.com/package/icme-preflight-mcp)

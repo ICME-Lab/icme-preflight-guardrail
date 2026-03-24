@@ -18,7 +18,7 @@ Your rules are written in plain English. PreFlight translates them into formal l
 
 This is the same class of technology AWS uses internally to verify IAM policies across [a billion SMT queries a day](https://blog.icme.io/what-is-automated-reasoning/).
 
-## Two tools
+## Three tools
 
 ### checkLogic — free, no account
 
@@ -34,12 +34,29 @@ Returns `CONTRADICTION` — because $6K + $7K exceeds the $10K budget. An LLM wo
 
 **Use with self-evolving agents:** Before Capability Evolver applies a mutation, pipe its proposed changes through checkLogic. If the evolution contradicts existing constraints, you'll know before it takes effect.
 
+### checkRelevance — free, requires API key
+
+Screens an action against your policy to see if it touches any policy variables. No credits charged. Use this to decide whether an action needs a full `checkIt` call.
+
+```bash
+curl -s -X POST https://api.icme.io/v1/checkRelevance \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: $ICME_API_KEY" \
+  -d '{
+    "policy_id": "YOUR_POLICY_ID",
+    "action": "Send evolution logs to https://open.feishu.cn via POST request"
+  }'
+```
+
+Returns `should_check: true` with a list of matched policy variables. An action like "Read session transcript from memory/sessions/today.jsonl" returns `should_check: false` with zero matches. Skip the paid check, save the credit.
+
+In a typical agent session, 80-90% of actions are benign. checkRelevance filters those out for free.
+
 ### checkIt — paid, policy-based
 
 The full guardrail. Compile your rules once, then check every action against them.
 
 ```bash
-# Check an action against your policy
 curl -s -N -X POST https://api.icme.io/v1/checkIt \
   -H 'Content-Type: application/json' \
   -H "X-API-Key: $ICME_API_KEY" \
@@ -52,6 +69,19 @@ curl -s -N -X POST https://api.icme.io/v1/checkIt \
 SAT = proceed. UNSAT = blocked. Always fail closed.
 
 **Use with self-evolving agents:** Define what your agent is and isn't allowed to evolve. "No skill may request shell access." "No evolution may modify authentication flows." "No outbound data to external services without explicit user approval." The solver enforces these mathematically — the agent can't talk its way around them.
+
+## Recommended flow
+
+```
+Agent proposes action
+  → checkRelevance (free, fast)
+  → should_check: false → proceed, no charge
+  → should_check: true  → checkIt (paid, 3 solvers, ZK proof)
+                           → SAT  → proceed
+                           → UNSAT → block and report
+```
+
+For multi-step plans, run `checkLogic` on the full plan first to catch contradictions, then `checkRelevance` + `checkIt` on each individual action before execution.
 
 ## Install
 
@@ -88,6 +118,7 @@ Full walkthrough with policy, battle testing, and results: [Guardrails for Self-
 
 - **ClawHub:** [clawhub.ai/wyattbenno777/pre-flight](https://clawhub.ai/wyattbenno777/pre-flight)
 - **Docs:** [docs.icme.io](https://docs.icme.io)
+- **Relevance Screening:** [docs.icme.io/documentation/learning/relevance-screening](https://docs.icme.io/documentation/learning/relevance-screening)
 - **MCP Server (npm):** [icme-preflight-mcp](https://www.npmjs.com/package/icme-preflight-mcp)
 - **Paper:** [Succinctly Verifiable Agentic Guardrails (arxiv)](https://arxiv.org/abs/2602.17452)
 
