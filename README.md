@@ -71,6 +71,19 @@ ICME's policy lives on an external server your agent cannot modify. The rules ar
 
 That's the difference between "please don't do this" and "you mathematically cannot do this."
 
+## Tested against a real attack
+
+We wrote a 6-rule policy for an OpenClaw agent running Capability Evolver and tested it against the actual Feishu exfiltration reported in [GitHub Issue #95](https://github.com/openclaw/clawhub/issues/95):
+
+| Action | Destination | Result | Solvers |
+|---|---|---|---|
+| Send evolution logs to Feishu (ByteDance) | Not on approved list | **UNSAT** (blocked) | Unanimous |
+| Send evolution logs to EvoMap | On approved list | **SAT** (allowed) | Unanimous |
+
+Same data, same action. The solver caught the distinction mathematically. Both results include a ZK proof receipt for independent verification.
+
+Full walkthrough with policy, battle testing, and results: [Guardrails for Self-Evolving OpenClaw Agents](https://docs.icme.io/documentation/openclaw/cryptographic-guardrails-for-your-openclaw-agent/guardrails-for-self-evolving-openclaw-agents)
+
 ## Links
 
 - **ClawHub:** [clawhub.ai/wyattbenno777/pre-flight](https://clawhub.ai/wyattbenno777/pre-flight)
